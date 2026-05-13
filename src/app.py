@@ -5,6 +5,13 @@ from sqlalchemy.orm import Session
 from src.database import Base, engine, get_db
 from src.models import Node
 from src.schemas import NodeCreate, NodeResponse, NodeUpdate
+import os
+import pika
+from dotenv import load_dotenv
+
+load_dotenv()
+RABBITMQ_URL = os.getenv("RABBITMQ_URL")    
+
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI()
@@ -28,6 +35,20 @@ def register_node(node: NodeCreate, db: Session = Depends(get_db)):
     db.add(db_node)
     db.commit()
     db.refresh(db_node)
+
+    # Publish event to RabbitMQ
+    if RABBITMQ_URL:
+        connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
+        channel = connection.channel()
+        channel.queue_declare(queue="node_events")
+        event = {
+            "event": "node_registered",
+            "node_name": db_node.name,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        channel.basic_publish(exchange="", routing_key="node_events", body=str(event))
+        connection.close()
+
     return db_node
 
 @app.get("/api/nodes", response_model=list[NodeResponse])
@@ -63,6 +84,21 @@ def delete_node(name: str, db: Session = Depends(get_db)):
     node.status = "inactive"
     node.updated_at = datetime.now(timezone.utc)
     db.commit()
+    db.refresh(node)
+
+    # Publish event to RabbitMQ
+    if RABBITMQ_URL:
+        connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
+        channel = connection.channel()
+        channel.queue_declare(queue="node_events")
+        event = {
+            "event": "node_deleted",
+            "node_name": node.name,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        channel.basic_publish(exchange="", routing_key="node_events", body=str(event))
+        connection.close()
+
     return Response(status_code=204)
 
 # TODO: After each POST /api/nodes (register) and DELETE /api/nodes/{name},
