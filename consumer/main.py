@@ -11,6 +11,7 @@ Implement a RabbitMQ consumer that:
 # TODO: Implement the consumer
 
 import os
+import json
 import pika 
 from dotenv import load_dotenv
 
@@ -22,11 +23,14 @@ def main():
         print(f"Connecting to RabbitMQ at {RABBITMQ_URL}", flush=True)
         connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
         channel = connection.channel()
-        channel.queue_declare(queue="node_events", durable=True)
+        channel.queue_declare(queue="node_events")
 
         def callback(ch, method, properties, body):
-            event_data = body.decode()
-            print(f"EVENT: {event_data}", flush=True)
+            event_data = json.loads(body.decode())
+            print(
+                f"EVENT: {event_data['event']} | node: {event_data['node_name']} | time: {event_data['timestamp']}",
+                flush=True,
+            )
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
         channel.basic_consume(queue="node_events", on_message_callback=callback)

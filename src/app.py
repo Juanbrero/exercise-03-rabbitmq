@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from src.database import Base, engine, get_db
 from src.models import Node
 from src.schemas import NodeCreate, NodeResponse, NodeUpdate
+import json
 import os
 import pika
 from dotenv import load_dotenv
@@ -44,9 +45,13 @@ def register_node(node: NodeCreate, db: Session = Depends(get_db)):
         event = {
             "event": "node_registered",
             "node_name": db_node.name,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         }
-        channel.basic_publish(exchange="", routing_key="node_events", body=str(event))
+        channel.basic_publish(
+            exchange="",
+            routing_key="node_events",
+            body=json.dumps(event),
+        )
         connection.close()
 
     return db_node
@@ -94,9 +99,13 @@ def delete_node(name: str, db: Session = Depends(get_db)):
         event = {
             "event": "node_deleted",
             "node_name": node.name,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         }
-        channel.basic_publish(exchange="", routing_key="node_events", body=str(event))
+        channel.basic_publish(
+            exchange="",
+            routing_key="node_events",
+            body=json.dumps(event),
+        )
         connection.close()
 
     return Response(status_code=204)
